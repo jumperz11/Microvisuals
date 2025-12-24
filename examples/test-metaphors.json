@@ -1,0 +1,137 @@
+[
+  {
+    "topic": "Saying yes to everything",
+    "step1": {
+      "subject": "professional",
+      "pressure": "constant requests from others",
+      "conflict": "cannot refuse without guilt",
+      "cost": "no time for own priorities",
+      "emotion": "overwhelmed"
+    },
+    "step2_object": "power strip",
+    "step3_mechanic": {
+      "rule": "When every outlet is used, the breaker trips",
+      "x_maps_to": "accepting every request",
+      "y_maps_to": "complete shutdown"
+    },
+    "step4_quotes": [
+      "A power strip doesn't negotiate capacity.",
+      "Every outlet filled is a circuit waiting to break.",
+      "A power strip with every outlet filled still trips the breaker."
+    ],
+    "step4_best": {
+      "line1": "A power strip with every outlet filled",
+      "line2": "still trips the breaker."
+    },
+    "step5_visual": "Power strip from above, all 6 outlets occupied by plug shapes, small spark/break indicator at the cord base",
+    "step5_dalle_prompt": "Power strip with all outlets filled, cord fraying at base. Flat 2D vector. Pure black background. White shapes only. No gradients. No texture. No shadows. Minimal. Bauhaus poster style. Centered."
+  },
+  {
+    "topic": "Ignoring burnout signs",
+    "step1": {
+      "subject": "worker",
+      "pressure": "deadlines and expectations",
+      "conflict": "body signals exhaustion but mind pushes forward",
+      "cost": "health collapse",
+      "emotion": "denial"
+    },
+    "step2_object": "fuel gauge",
+    "step3_mechanic": {
+      "rule": "When the needle hits empty, the engine stops",
+      "x_maps_to": "ignoring exhaustion signals",
+      "y_maps_to": "forced stop"
+    },
+    "step4_quotes": [
+      "The gauge doesn't care about your deadline.",
+      "Empty means empty, no matter how close you are.",
+      "The fuel gauge doesn't lie. The car doesn't care if you're close."
+    ],
+    "step4_best": {
+      "line1": "The fuel gauge doesn't lie.",
+      "line2": "The car doesn't care if you're close."
+    },
+    "step5_visual": "Circular fuel gauge, needle pointing to E, simple meter markings",
+    "step5_dalle_prompt": "Fuel gauge with needle on empty. Flat 2D vector. Pure black background. White shapes only. No gradients. No texture. No shadows. Minimal. Bauhaus poster style. Centered."
+  },
+  {
+    "topic": "Skipping the basics",
+    "step1": {
+      "subject": "learner",
+      "pressure": "impatience to reach advanced levels",
+      "conflict": "wants results without foundation",
+      "cost": "collapse under complexity",
+      "emotion": "frustration"
+    },
+    "step2_object": "ladder",
+    "step3_mechanic": {
+      "rule": "When you skip rungs, you lose your grip",
+      "x_maps_to": "skipping fundamentals",
+      "y_maps_to": "falling when it matters"
+    },
+    "step4_quotes": [
+      "A ladder doesn't care which rungs you skip.",
+      "Missing rungs don't stop the climb. They stop you.",
+      "A ladder with missing rungs still reaches the top. You don't."
+    ],
+    "step4_best": {
+      "line1": "A ladder with missing rungs",
+      "line2": "still reaches the top. You don't."
+    },
+    "step5_visual": "Vertical ladder, 3 rungs missing in the middle section, clean geometric lines",
+    "step5_dalle_prompt": "Ladder with three missing rungs in middle. Flat 2D vector. Pure black background. White shapes only. No gradients. No texture. No shadows. Minimal. Bauhaus poster style. Centered."
+  },
+  {
+    "topic": "Multitasking constantly",
+    "step1": {
+      "subject": "professional",
+      "pressure": "multiple simultaneous demands",
+      "conflict": "attention split across tasks",
+      "cost": "nothing done well",
+      "emotion": "scattered"
+    },
+    "step2_object": "knife",
+    "step3_mechanic": {
+      "rule": "When a blade is dulled on everything, it cuts nothing",
+      "x_maps_to": "spreading attention everywhere",
+      "y_maps_to": "no sharp results"
+    },
+    "step4_quotes": [
+      "A knife for everything becomes a knife for nothing.",
+      "Dull blades don't cut. They tear.",
+      "A knife used on everything eventually cuts nothing."
+    ],
+    "step4_best": {
+      "line1": "A knife used on everything",
+      "line2": "eventually cuts nothing."
+    },
+    "step5_visual": "Kitchen knife shown from side, blade edge visibly rounded/dull, simple silhouette",
+    "step5_dalle_prompt": "Kitchen knife with visibly dull rounded blade edge. Flat 2D vector. Pure black background. White shapes only. No gradients. No texture. No shadows. Minimal. Bauhaus poster style. Centered."
+  },
+  {
+    "topic": "Avoiding difficult conversations",
+    "step1": {
+      "subject": "person in relationship",
+      "pressure": "fear of conflict",
+      "conflict": "problems exist but go unspoken",
+      "cost": "pressure builds until explosion",
+      "emotion": "avoidance"
+    },
+    "step2_object": "pressure cooker",
+    "step3_mechanic": {
+      "rule": "When steam has no valve, the lid blows",
+      "x_maps_to": "suppressing issues",
+      "y_maps_to": "uncontrolled rupture"
+    },
+    "step4_quotes": [
+      "Sealed valves don't stop the pressure.",
+      "The cooker doesn't care about your silence.",
+      "A pressure cooker with a sealed valve. The steam always finds a way out."
+    ],
+    "step4_best": {
+      "line1": "A pressure cooker with a sealed valve.",
+      "line2": "The steam always finds a way out."
+    },
+    "step5_visual": "Pressure cooker from side, valve clearly blocked/sealed, small cracks near lid edge suggesting pressure",
+    "step5_dalle_prompt": "Pressure cooker with sealed valve and cracks near lid. Flat 2D vector. Pure black background. White shapes only. No gradients. No texture. No shadows. Minimal. Bauhaus poster style. Centered."
+  }
+]

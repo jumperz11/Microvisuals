@@ -1026,6 +1026,26 @@
   border: none;
 }
 
+.text-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: #555;
+}
+
+.text-input::placeholder {
+  color: #555;
+}
+
 .font-selector {
   display: flex;
   gap: 6px;

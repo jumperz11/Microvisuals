@@ -1,27 +1,27 @@
 {
-  "topic": "Easy path vs Hard path",
+  "topic": "Crypto - money you store in your head",
   "step1": {
-    "subject": "person avoiding difficulty",
-    "pressure": "comfort, instant gratification, path of least resistance",
-    "conflict": "easy now means hard later, hard now means easy later",
-    "cost": "trading long-term growth for short-term comfort",
-    "emotion": "regret, stagnation, unfulfilled potential"
+    "subject": "person holding wealth",
+    "pressure": "banks can freeze, governments can seize, borders can block",
+    "conflict": "traditional wealth requires trust in institutions",
+    "cost": "dependency, vulnerability, permission needed",
+    "emotion": "freedom, sovereignty, self-reliance"
   },
-  "step2_object": "blade on whetstone",
+  "step2_object": "vault with no walls",
   "step3_mechanic": {
-    "rule": "A blade that avoids the stone stays dull forever",
-    "x_maps_to": "avoiding friction and difficulty",
-    "y_maps_to": "never becoming sharp or capable"
+    "rule": "The only vault they can't seize is the one that doesn't exist",
+    "x_maps_to": "memorizing 12 words",
+    "y_maps_to": "carrying infinite wealth invisibly"
   },
   "step4_quotes": [
-    "The blade that fears the stone stays dull.",
-    "Comfort is rust. Friction is polish.",
-    "The easy path dulls you. The hard path sharpens."
+    "The heaviest vault weighs nothing.",
+    "They can freeze the account. Not the words.",
+    "12 words. No walls. No keys. No permission."
   ],
   "step4_best": {
-    "line1": "The blade that fears the stone",
-    "line2": "stays dull forever."
+    "line1": "you can store wealth",
+    "line2": "inside your head."
   },
-  "step5_visual": "A single knife blade resting against a whetstone, untouched and dull",
-  "step5_dalle_prompt": "Single knife blade resting flat against rectangular whetstone, blade dull and unused. Flat 2D vector. Pure black background. White shapes only. No gradients. No texture. No shadows. Minimal. Bauhaus poster style. Centered composition."
+  "step5_visual": "A human brain with a small vault door embedded in its side",
+  "step5_dalle_prompt": "Human brain with small bank vault door embedded in the side of the brain, vault door slightly open. Flat 2D vector. Pure black background. White shapes only. No gradients. No texture. No shadows. Minimal. Bauhaus poster style. Centered."
 }

@@ -26,6 +26,11 @@ function App() {
   const [savedPresets, setSavedPresets] = useState<{name: string, settings: any}[]>([]);
   const [textPositionY, setTextPositionY] = useState(85); // percentage from top
   const [selectedFont, setSelectedFont] = useState('Inter');
+  const [topText, setTopText] = useState('What it feels like:');
+  const [showTopText, setShowTopText] = useState(true);
+  const [topTextY, setTopTextY] = useState(8); // percentage from top
+  const [quoteLine1, setQuoteLine1] = useState('');
+  const [quoteLine2, setQuoteLine2] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -54,7 +59,9 @@ function App() {
   const defaultSettings = {
     scale: 0.45, x: 50, y: 50, text: 85,
     font: 'Inter', bg: 'original',
-    bgColor: '#000000', shapeColor: '#ffffff', clean: 35
+    bgColor: '#000000', shapeColor: '#ffffff', clean: 35,
+    topText: 'What it feels like:', showTopText: true, topTextY: 8,
+    quoteLine1: '', quoteLine2: ''
   };
 
   // Load history and API key from localStorage on mount
@@ -159,7 +166,12 @@ function App() {
       bg: selectedBackground,
       bgColor: bgColor,
       shapeColor: shapeColor,
-      clean: cleanThreshold
+      clean: cleanThreshold,
+      topText: topText,
+      showTopText: showTopText,
+      topTextY: topTextY,
+      quoteLine1: quoteLine1,
+      quoteLine2: quoteLine2
     };
     setSavedPresets(prev => [...prev, { name, settings }]);
   };
@@ -175,6 +187,11 @@ function App() {
     if (settings.bgColor) setBgColor(settings.bgColor);
     if (settings.shapeColor) setShapeColor(settings.shapeColor);
     if (settings.clean) setCleanThreshold(settings.clean);
+    if (settings.topText !== undefined) setTopText(settings.topText);
+    if (settings.showTopText !== undefined) setShowTopText(settings.showTopText);
+    if (settings.topTextY !== undefined) setTopTextY(settings.topTextY);
+    if (settings.quoteLine1 !== undefined) setQuoteLine1(settings.quoteLine1);
+    if (settings.quoteLine2 !== undefined) setQuoteLine2(settings.quoteLine2);
   };
 
   // Delete preset
@@ -535,6 +552,42 @@ function App() {
     }
   }, [openaiKey, resultJSON]);
 
+  // Remove black background from image
+  const removeBackground = useCallback(() => {
+    if (!uploadedImage) return;
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      // Threshold for "black" - pixels darker than this become transparent
+      const threshold = 30;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        // If pixel is near-black, make it transparent
+        if (r < threshold && g < threshold && b < threshold) {
+          data[i + 3] = 0; // Set alpha to 0
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      setUploadedImage(canvas.toDataURL('image/png'));
+    };
+    img.src = uploadedImage;
+  }, [uploadedImage]);
+
   // Word wrap helper function
   const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
     const words = text.split(' ');
@@ -688,6 +741,10 @@ function App() {
         const isNearCenterX = Math.abs(objectX - 50) < 2;
         const isNearCenterY = Math.abs(objectY - 50) < 2;
 
+        // Padding from edges (5% of canvas size)
+        const padX = width * 0.05;
+        const padY = height * 0.05;
+
         ctx.setLineDash([10, 10]);
         ctx.lineWidth = 1;
 
@@ -695,8 +752,8 @@ function App() {
         if (isNearCenterX) {
           ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
           ctx.beginPath();
-          ctx.moveTo(width / 2, 0);
-          ctx.lineTo(width / 2, height);
+          ctx.moveTo(width / 2, padY);
+          ctx.lineTo(width / 2, height - padY);
           ctx.stroke();
         }
 
@@ -704,39 +761,39 @@ function App() {
         if (isNearCenterY) {
           ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
           ctx.beginPath();
-          ctx.moveTo(0, height / 2);
-          ctx.lineTo(width, height / 2);
+          ctx.moveTo(padX, height / 2);
+          ctx.lineTo(width - padX, height / 2);
           ctx.stroke();
         }
 
-        // Always show faint grid
+        // Always show faint grid (with padding)
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
         // Vertical center
         ctx.beginPath();
-        ctx.moveTo(width / 2, 0);
-        ctx.lineTo(width / 2, height);
+        ctx.moveTo(width / 2, padY);
+        ctx.lineTo(width / 2, height - padY);
         ctx.stroke();
         // Horizontal center
         ctx.beginPath();
-        ctx.moveTo(0, height / 2);
-        ctx.lineTo(width, height / 2);
+        ctx.moveTo(padX, height / 2);
+        ctx.lineTo(width - padX, height / 2);
         ctx.stroke();
         // Thirds
         ctx.beginPath();
-        ctx.moveTo(width / 3, 0);
-        ctx.lineTo(width / 3, height);
+        ctx.moveTo(width / 3, padY);
+        ctx.lineTo(width / 3, height - padY);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(width * 2 / 3, 0);
-        ctx.lineTo(width * 2 / 3, height);
+        ctx.moveTo(width * 2 / 3, padY);
+        ctx.lineTo(width * 2 / 3, height - padY);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(0, height / 3);
-        ctx.lineTo(width, height / 3);
+        ctx.moveTo(padX, height / 3);
+        ctx.lineTo(width - padX, height / 3);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(0, height * 2 / 3);
-        ctx.lineTo(width, height * 2 / 3);
+        ctx.moveTo(padX, height * 2 / 3);
+        ctx.lineTo(width - padX, height * 2 / 3);
         ctx.stroke();
 
         ctx.setLineDash([]);
@@ -749,13 +806,26 @@ function App() {
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, height);
 
-      // Quote text - Small, elegant, refined like Neuronvisuals
-      const line1 = resultJSON.step4_best.line1;
-      const line2 = resultJSON.step4_best.line2;
-
       // Scale font based on canvas size
       const baseSize = Math.min(width, height);
       const quoteFontSize = Math.round(baseSize * 0.032);
+      const fontWeight = selectedFont === 'Bebas Neue' ? '400' : '500';
+
+      // Top text (setup line) - smaller, more subtle
+      if (showTopText && topText) {
+        const topFontSize = Math.round(baseSize * 0.024);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `${fontWeight} ${topFontSize}px "${selectedFont}", sans-serif`;
+        const topY = height * (topTextY / 100);
+        ctx.fillText(topText, width / 2, topY);
+      }
+
+      // Quote text (bottom) - Small, elegant, refined like Neuronvisuals
+      // Use custom text if set, otherwise fall back to JSON
+      const line1 = quoteLine1 || resultJSON.step4_best.line1;
+      const line2 = quoteLine2 || resultJSON.step4_best.line2;
       const lineHeight = quoteFontSize * 1.6;
 
       ctx.fillStyle = '#ffffff';
@@ -772,7 +842,6 @@ function App() {
       let currentY = textY - totalHeight / 2;
 
       // Draw quote lines
-      const fontWeight = selectedFont === 'Bebas Neue' ? '400' : '500';
       ctx.font = `${fontWeight} ${quoteFontSize}px "${selectedFont}", sans-serif`;
       ctx.fillText(line1, width / 2, currentY);
       if (line2) {
@@ -781,7 +850,7 @@ function App() {
       }
     };
     img.src = uploadedImage;
-  }, [uploadedImage, resultJSON, selectedSize, objectScale, objectX, objectY, textPositionY, selectedFont, selectedBackground, bgColor, shapeColor, cleanThreshold, showGuides]);
+  }, [uploadedImage, resultJSON, selectedSize, objectScale, objectX, objectY, textPositionY, selectedFont, selectedBackground, bgColor, shapeColor, cleanThreshold, showGuides, topText, showTopText, topTextY, quoteLine1, quoteLine2]);
 
   // Re-render canvas when any setting changes
   useEffect(() => {
@@ -1093,6 +1162,9 @@ function App() {
                       <button onClick={() => setShowGuides(!showGuides)} className={`tool-btn ${showGuides ? 'active' : ''}`}>
                         Grid
                       </button>
+                      <button onClick={removeBackground} className="tool-btn" title="Remove black background from image">
+                        Remove BG
+                      </button>
                       <button
                         onClick={() => {
                           const settings = {
@@ -1134,8 +1206,68 @@ function App() {
                   {/* Text Section */}
                   <div className="control-section">
                     <h4>Text</h4>
+
+                    {/* Top Text (Setup line) */}
                     <div className="control-group">
-                      <label>Position <span className="value">{textPositionY}%</span></label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={showTopText}
+                          onChange={(e) => setShowTopText(e.target.checked)}
+                          style={{ marginRight: '8px' }}
+                        />
+                        Top Text
+                      </label>
+                    </div>
+                    {showTopText && (
+                      <>
+                        <div className="control-group">
+                          <input
+                            type="text"
+                            value={topText}
+                            onChange={(e) => setTopText(e.target.value)}
+                            placeholder="What it feels like:"
+                            className="text-input"
+                          />
+                        </div>
+                        <div className="control-group">
+                          <label>Top Position <span className="value">{topTextY}%</span></label>
+                          <input
+                            type="range"
+                            min="3"
+                            max="30"
+                            step="1"
+                            value={topTextY}
+                            onChange={(e) => setTopTextY(parseInt(e.target.value))}
+                            className="slider"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {/* Bottom Text (Quote) */}
+                    <div className="control-group" style={{ marginTop: '12px' }}>
+                      <label>Quote Line 1</label>
+                      <input
+                        type="text"
+                        value={quoteLine1}
+                        onChange={(e) => setQuoteLine1(e.target.value)}
+                        placeholder={resultJSON?.step4_best.line1 || 'Line 1...'}
+                        className="text-input"
+                      />
+                    </div>
+                    <div className="control-group">
+                      <label>Quote Line 2</label>
+                      <input
+                        type="text"
+                        value={quoteLine2}
+                        onChange={(e) => setQuoteLine2(e.target.value)}
+                        placeholder={resultJSON?.step4_best.line2 || 'Line 2...'}
+                        className="text-input"
+                      />
+                    </div>
+                    <div className="control-group">
+                      <label>Bottom Position <span className="value">{textPositionY}%</span></label>
                       <input
                         type="range"
                         min="20"
