@@ -1,1 +1,27 @@
-{"step1":{"subject":"Developer ignoring vibe coding","pressure":"Faster way exists","conflict":"Choosing effort over outcome","cost":"Exhaustion for no reason","emotion":"Stubborn"},"step2_object":"Elevator","step3_mechanic":{"rule":"Both reach the top. One arrives exhausted.","x_maps_to":"Stairs = writing code manually","y_maps_to":"Elevator = vibe coding, same floor, no sweat"},"step4_quotes":["The view is the same from the top.","One arrived first. One arrived tired.","The building does not reward the stairs."],"step4_best":{"line1":"What ignoring vibe coding feels like:","line2":"Taking the stairs to the 50th floor when the elevator is right there."},"step5_visual":"A single elevator door, open, empty, waiting.","step5_dalle_prompt":"A single open elevator door with empty interior, waiting. Flat 2D vector. Pure black background. White shapes only. No gradients. No texture. No shadows. No extra objects. No ground. Minimal. Bauhaus poster style. Centered."}
+{
+  "topic": "Easy path vs Hard path",
+  "step1": {
+    "subject": "person avoiding difficulty",
+    "pressure": "comfort, instant gratification, path of least resistance",
+    "conflict": "easy now means hard later, hard now means easy later",
+    "cost": "trading long-term growth for short-term comfort",
+    "emotion": "regret, stagnation, unfulfilled potential"
+  },
+  "step2_object": "blade on whetstone",
+  "step3_mechanic": {
+    "rule": "A blade that avoids the stone stays dull forever",
+    "x_maps_to": "avoiding friction and difficulty",
+    "y_maps_to": "never becoming sharp or capable"
+  },
+  "step4_quotes": [
+    "The blade that fears the stone stays dull.",
+    "Comfort is rust. Friction is polish.",
+    "The easy path dulls you. The hard path sharpens."
+  ],
+  "step4_best": {
+    "line1": "The blade that fears the stone",
+    "line2": "stays dull forever."
+  },
+  "step5_visual": "A single knife blade resting against a whetstone, untouched and dull",
+  "step5_dalle_prompt": "Single knife blade resting flat against rectangular whetstone, blade dull and unused. Flat 2D vector. Pure black background. White shapes only. No gradients. No texture. No shadows. Minimal. Bauhaus poster style. Centered composition."
+}

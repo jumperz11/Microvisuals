@@ -19,6 +19,7 @@ export interface MetaphorStep4Best {
 }
 
 export interface MetaphorResult {
+  topic?: string;
   step1: MetaphorStep1;
   step2_object: string;
   step3_mechanic: MetaphorStep3;
@@ -69,4 +70,16 @@ export interface AppState {
   imageUrl: string | null;
   imageError: string | null;
   textError: string | null;
+}
+
+// History item for saved prompts
+export type HistoryStatus = 'pending' | 'done' | 'declined' | 'future';
+
+export interface HistoryItem {
+  id: string;
+  createdAt: number;
+  topic: string;
+  metaphor: MetaphorResult;
+  status: HistoryStatus;
+  generatedImage?: string; // base64 or URL of generated image
 }

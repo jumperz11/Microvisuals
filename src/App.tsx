@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
-import { MetaphorResult } from './types';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { MetaphorResult, HistoryItem, HistoryStatus } from './types';
 import './App.css';
 
 function App() {
@@ -8,32 +8,279 @@ function App() {
   const [rejection, setRejection] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [selectedSize, setSelectedSize] = useState<'1:1' | '4:5' | '9:16'>('1:1');
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [openaiKey, setOpenaiKey] = useState('');
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [generationStatus, setGenerationStatus] = useState('');
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [objectScale, setObjectScale] = useState(0.45);
+  const [objectX, setObjectX] = useState(50); // percentage from left
+  const [objectY, setObjectY] = useState(50); // percentage from top
+  const [showGuides, setShowGuides] = useState(true);
+  const [savedPresets, setSavedPresets] = useState<{name: string, settings: any}[]>([]);
+  const [textPositionY, setTextPositionY] = useState(85); // percentage from top
+  const [selectedFont, setSelectedFont] = useState('Inter');
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Poll for new metaphor data from file
+  const fontOptions = [
+    { name: 'Inter', label: 'Inter' },
+    { name: 'Space Mono', label: 'Mono' },
+    { name: 'Bebas Neue', label: 'Bebas' },
+    { name: 'Playfair Display', label: 'Playfair' },
+    { name: 'Oswald', label: 'Oswald' },
+  ];
+
+  const backgroundOptions = [
+    { id: 'original', label: 'Original' },
+    { id: 'custom', label: 'Custom' },
+    { id: 'shiny', label: 'Shiny' },
+    { id: 'metal', label: 'Metal' },
+    { id: 'scratched', label: 'Scratched' },
+  ];
+
+  const [selectedBackground, setSelectedBackground] = useState('original');
+  const [bgColor, setBgColor] = useState('#000000');
+  const [shapeColor, setShapeColor] = useState('#ffffff');
+  const [cleanThreshold, setCleanThreshold] = useState(35);
+
+  // Default settings
+  const defaultSettings = {
+    scale: 0.45, x: 50, y: 50, text: 85,
+    font: 'Inter', bg: 'original',
+    bgColor: '#000000', shapeColor: '#ffffff', clean: 35
+  };
+
+  // Load history and API key from localStorage on mount
   useEffect(() => {
-    const checkForUpdate = async () => {
+    const savedKey = localStorage.getItem('openai-key');
+    if (savedKey) {
+      setOpenaiKey(savedKey);
+    }
+
+    const saved = localStorage.getItem('metaphor-history');
+    if (saved) {
       try {
-        const res = await fetch('/metaphor.json?t=' + Date.now());
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.step2_object) {
-            setResultJSON(data);
-            setRejection(null);
-            setParseError(null);
-          } else if (data && data.rejection) {
-            setRejection(data.rejection);
-            setResultJSON(null);
+        const loadedHistory = JSON.parse(saved) as HistoryItem[];
+
+        // Load images from IndexedDB
+        const dbRequest = indexedDB.open('metaphor-images', 1);
+        dbRequest.onupgradeneeded = (e) => {
+          const db = (e.target as IDBOpenDBRequest).result;
+          if (!db.objectStoreNames.contains('images')) {
+            db.createObjectStore('images', { keyPath: 'id' });
           }
-        }
-      } catch {
-        // File doesn't exist yet, that's fine
+        };
+        dbRequest.onsuccess = (e) => {
+          const db = (e.target as IDBOpenDBRequest).result;
+          const tx = db.transaction('images', 'readonly');
+          const store = tx.objectStore('images');
+
+          const updatedHistory = [...loadedHistory];
+          let pending = updatedHistory.length;
+
+          if (pending === 0) {
+            setHistory(updatedHistory);
+            return;
+          }
+
+          updatedHistory.forEach((item, index) => {
+            if (item.generatedImage === 'stored') {
+              const request = store.get(item.id);
+              request.onsuccess = () => {
+                if (request.result) {
+                  updatedHistory[index] = { ...item, generatedImage: request.result.image };
+                }
+                pending--;
+                if (pending === 0) {
+                  setHistory(updatedHistory);
+                }
+              };
+              request.onerror = () => {
+                pending--;
+                if (pending === 0) {
+                  setHistory(updatedHistory);
+                }
+              };
+            } else {
+              pending--;
+              if (pending === 0) {
+                setHistory(updatedHistory);
+              }
+            }
+          });
+        };
+        dbRequest.onerror = () => {
+          setHistory(loadedHistory);
+        };
+      } catch (e) {
+        console.error('Failed to load history:', e);
       }
+    }
+  }, []);
+
+  // Save OpenAI key to localStorage
+  useEffect(() => {
+    if (openaiKey) {
+      localStorage.setItem('openai-key', openaiKey);
+    }
+  }, [openaiKey]);
+
+  // Load presets from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('metaphor-presets');
+    if (saved) {
+      try {
+        setSavedPresets(JSON.parse(saved));
+      } catch (e) {}
+    }
+  }, []);
+
+  // Save presets to localStorage
+  useEffect(() => {
+    localStorage.setItem('metaphor-presets', JSON.stringify(savedPresets));
+  }, [savedPresets]);
+
+  // Save current settings as preset
+  const savePreset = () => {
+    const name = `Preset ${savedPresets.length + 1}`;
+    const settings = {
+      scale: objectScale,
+      x: objectX,
+      y: objectY,
+      text: textPositionY,
+      font: selectedFont,
+      bg: selectedBackground,
+      bgColor: bgColor,
+      shapeColor: shapeColor,
+      clean: cleanThreshold
+    };
+    setSavedPresets(prev => [...prev, { name, settings }]);
+  };
+
+  // Apply preset
+  const applyPreset = (settings: any) => {
+    if (settings.scale) setObjectScale(settings.scale);
+    if (settings.x !== undefined) setObjectX(settings.x);
+    if (settings.y !== undefined) setObjectY(settings.y);
+    if (settings.text) setTextPositionY(settings.text);
+    if (settings.font) setSelectedFont(settings.font);
+    if (settings.bg) setSelectedBackground(settings.bg);
+    if (settings.bgColor) setBgColor(settings.bgColor);
+    if (settings.shapeColor) setShapeColor(settings.shapeColor);
+    if (settings.clean) setCleanThreshold(settings.clean);
+  };
+
+  // Delete preset
+  const deletePreset = (index: number) => {
+    setSavedPresets(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Save history to localStorage when it changes (compress images)
+  useEffect(() => {
+    try {
+      // Store history - images are stored separately in IndexedDB
+      const historyWithoutImages = history.map(item => ({
+        ...item,
+        generatedImage: item.generatedImage ? 'stored' : undefined
+      }));
+      localStorage.setItem('metaphor-history', JSON.stringify(historyWithoutImages));
+
+      // Store images in IndexedDB (much larger storage)
+      const dbRequest = indexedDB.open('metaphor-images', 1);
+      dbRequest.onupgradeneeded = (e) => {
+        const db = (e.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains('images')) {
+          db.createObjectStore('images', { keyPath: 'id' });
+        }
+      };
+      dbRequest.onsuccess = (e) => {
+        const db = (e.target as IDBOpenDBRequest).result;
+        const tx = db.transaction('images', 'readwrite');
+        const store = tx.objectStore('images');
+        history.forEach(item => {
+          if (item.generatedImage && item.generatedImage !== 'stored') {
+            store.put({ id: item.id, image: item.generatedImage });
+          }
+        });
+      };
+    } catch (e) {
+      console.error('Failed to save history:', e);
+    }
+  }, [history]);
+
+  // Add current metaphor to history
+  const saveToHistory = useCallback(() => {
+    if (!resultJSON) return;
+
+    const newItem: HistoryItem = {
+      id: Date.now().toString(),
+      createdAt: Date.now(),
+      topic: resultJSON.step1?.subject || 'Unknown',
+      metaphor: resultJSON,
+      status: 'pending',
     };
 
-    const interval = setInterval(checkForUpdate, 1000);
-    checkForUpdate(); // Check immediately on load
+    setHistory(prev => [newItem, ...prev]);
+  }, [resultJSON]);
 
-    return () => clearInterval(interval);
+  // Update history item status
+  const updateHistoryStatus = useCallback((id: string, status: HistoryStatus) => {
+    setHistory(prev => prev.map(item =>
+      item.id === id ? { ...item, status } : item
+    ));
+  }, []);
+
+  // Load a history item
+  const loadFromHistory = useCallback((item: HistoryItem) => {
+    setResultJSON(item.metaphor);
+    if (item.generatedImage) {
+      setUploadedImage(item.generatedImage);
+    }
+    setShowHistory(false);
+  }, []);
+
+  // Delete a history item
+  const deleteFromHistory = useCallback((id: string) => {
+    setHistory(prev => prev.filter(item => item.id !== id));
+  }, []);
+
+  // Size configurations
+  const sizeConfigs = {
+    '1:1': { width: 1080, height: 1080, label: '1:1', desc: 'Universal' },
+    '4:5': { width: 1080, height: 1350, label: '4:5', desc: 'Feed' },
+    '9:16': { width: 1080, height: 1920, label: '9:16', desc: 'Story' },
+  };
+
+  // Fetch metaphor from Claude Code (manual only - no auto-poll)
+  const loadFromClaude = useCallback(async () => {
+    try {
+      const res = await fetch('/metaphor.json?t=' + Date.now());
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.step2_object) {
+          setResultJSON(data);
+          setRejection(null);
+          setParseError(null);
+          setJsonInput('');
+          setShowManualInput(false);
+          return true;
+        } else if (data && data.rejection) {
+          setRejection(data.rejection);
+          setResultJSON(null);
+          return true;
+        }
+      }
+    } catch {
+      setParseError('No metaphor found. Ask Claude Code to generate one first.');
+    }
+    return false;
   }, []);
 
   // Parse the JSON response
@@ -126,19 +373,459 @@ function App() {
     }
   }, [resultJSON]);
 
-  // Reset
+  // Reset - go back to main screen
   const handleClear = useCallback(() => {
     setJsonInput('');
     setResultJSON(null);
     setRejection(null);
     setParseError(null);
+    setUploadedImage(null);
+    setShowManualInput(false);
+  }, []);
+
+  // Handle image upload from file
+  const handleImageUpload = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setUploadedImage(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  // Handle file input change
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleImageUpload(file);
+  }, [handleImageUpload]);
+
+  // Handle drag and drop
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleImageUpload(file);
+  }, [handleImageUpload]);
+
+  // Handle paste from clipboard
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) handleImageUpload(file);
+          break;
+        }
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [handleImageUpload]);
+
+  // Generate image with DALL-E 3
+  const generateImage = useCallback(async () => {
+    if (!openaiKey || !resultJSON?.step5_dalle_prompt) return;
+
+    setIsGeneratingImage(true);
+    setImageError(null);
+    setGenerationProgress(0);
+    setGenerationStatus('Analyzing prompt...');
+
+    // Simulate progress since DALL-E doesn't provide real progress
+    const progressInterval = setInterval(() => {
+      setGenerationProgress(prev => {
+        if (prev < 20) {
+          setGenerationStatus('Analyzing prompt...');
+          return prev + 2;
+        } else if (prev < 50) {
+          setGenerationStatus('Generating composition...');
+          return prev + 1.5;
+        } else if (prev < 80) {
+          setGenerationStatus('Rendering details...');
+          return prev + 1;
+        } else if (prev < 95) {
+          setGenerationStatus('Finalizing image...');
+          return prev + 0.5;
+        }
+        return prev;
+      });
+    }, 200);
+
+    try {
+      const response = await fetch('/api/openai/v1/images/generations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openaiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'dall-e-3',
+          prompt: resultJSON.step5_dalle_prompt,
+          n: 1,
+          size: '1024x1024',
+          quality: 'hd',
+          response_format: 'b64_json',
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Failed to generate image');
+      }
+
+      const data = await response.json();
+      console.log('OpenAI response:', data);
+
+      const imageUrl = data.data[0]?.url;
+      const b64 = data.data[0]?.b64_json;
+
+      if (b64) {
+        const imageData = `data:image/png;base64,${b64}`;
+        setUploadedImage(imageData);
+        // Auto-save to history
+        if (resultJSON) {
+          const newItem: HistoryItem = {
+            id: Date.now().toString(),
+            createdAt: Date.now(),
+            topic: resultJSON.topic || resultJSON.step1?.subject || 'Unknown',
+            metaphor: resultJSON,
+            status: 'pending',
+            generatedImage: imageData,
+          };
+          setHistory(prev => [newItem, ...prev]);
+        }
+      } else if (imageUrl) {
+        setUploadedImage(imageUrl);
+        // Auto-save to history
+        if (resultJSON) {
+          const newItem: HistoryItem = {
+            id: Date.now().toString(),
+            createdAt: Date.now(),
+            topic: resultJSON.topic || resultJSON.step1?.subject || 'Unknown',
+            metaphor: resultJSON,
+            status: 'pending',
+            generatedImage: imageUrl,
+          };
+          setHistory(prev => [newItem, ...prev]);
+        }
+      }
+    clearInterval(progressInterval);
+      setGenerationProgress(100);
+      setGenerationStatus('Complete!');
+    } catch (error) {
+      clearInterval(progressInterval);
+      console.error('DALL-E error:', error);
+      setImageError(error instanceof Error ? error.message : 'Failed to generate image. Check console.');
+      setGenerationProgress(0);
+      setGenerationStatus('');
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  }, [openaiKey, resultJSON]);
+
+  // Word wrap helper function
+  const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let currentLine = '';
+
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const metrics = ctx.measureText(testLine);
+
+      if (metrics.width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+    return lines;
+  };
+
+  // Draw custom background
+  const drawBackground = (ctx: CanvasRenderingContext2D, width: number, height: number, type: string) => {
+    if (type === 'custom') {
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, width, height);
+    } else if (type === 'shiny') {
+      const gradient = ctx.createRadialGradient(width / 2, height / 3, 0, width / 2, height / 2, width);
+      gradient.addColorStop(0, '#1a1a1a');
+      gradient.addColorStop(0.5, '#0a0a0a');
+      gradient.addColorStop(1, '#000000');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+    } else if (type === 'metal') {
+      const gradient = ctx.createLinearGradient(0, 0, width, height);
+      gradient.addColorStop(0, '#1c1c1c');
+      gradient.addColorStop(0.3, '#0f0f0f');
+      gradient.addColorStop(0.5, '#1a1a1a');
+      gradient.addColorStop(0.7, '#0a0a0a');
+      gradient.addColorStop(1, '#141414');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+    } else if (type === 'scratched') {
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, width, height);
+      // Add scratch lines
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 50; i++) {
+        ctx.beginPath();
+        const x1 = Math.random() * width;
+        const y1 = Math.random() * height;
+        const angle = Math.random() * Math.PI;
+        const len = 50 + Math.random() * 150;
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x1 + Math.cos(angle) * len, y1 + Math.sin(angle) * len);
+        ctx.stroke();
+      }
+    }
+  };
+
+  // Helper to parse hex color
+  const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : { r: 255, g: 255, b: 255 };
+  };
+
+  // Replace dark pixels with transparency and recolor white shapes
+  const processImage = (ctx: CanvasRenderingContext2D, width: number, height: number, threshold: number, newShapeColor: string) => {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const shapeRgb = hexToRgb(newShapeColor);
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      // Check if pixel is dark enough to be considered "black"
+      if (r < threshold && g < threshold && b < threshold) {
+        data[i + 3] = 0; // Set alpha to 0 (transparent)
+      }
+      // Check if pixel is light enough to be considered "white" shape
+      else if (r > 200 && g > 200 && b > 200) {
+        // Preserve the brightness ratio when recoloring
+        const brightness = (r + g + b) / 3 / 255;
+        data[i] = Math.round(shapeRgb.r * brightness);
+        data[i + 1] = Math.round(shapeRgb.g * brightness);
+        data[i + 2] = Math.round(shapeRgb.b * brightness);
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+  };
+
+  // Render canvas with image + quote overlay (Neuronvisuals/VisualTheory style)
+  const renderCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !uploadedImage || !resultJSON) return null;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      // Get selected size
+      const { width, height } = sizeConfigs[selectedSize];
+      canvas.width = width;
+      canvas.height = height;
+
+      // Draw background first
+      if (selectedBackground === 'original') {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, width, height);
+      } else {
+        drawBackground(ctx, width, height, selectedBackground);
+      }
+
+      // Process and draw image
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = img.width;
+      tempCanvas.height = img.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      if (tempCtx) {
+        tempCtx.drawImage(img, 0, 0);
+
+        // Only process colors if not original mode
+        if (selectedBackground !== 'original') {
+          processImage(tempCtx, img.width, img.height, cleanThreshold, shapeColor);
+        }
+
+        // Calculate scaled size
+        const scaledW = img.width * objectScale;
+        const scaledH = img.height * objectScale;
+
+        // Position based on objectX/objectY (percentage)
+        const posX = (width * objectX / 100) - (scaledW / 2);
+        const posY = (height * objectY / 100) - (scaledH / 2);
+
+        ctx.drawImage(tempCanvas, posX, posY, scaledW, scaledH);
+      }
+
+      // Draw center guides when near center
+      if (showGuides) {
+        const isNearCenterX = Math.abs(objectX - 50) < 2;
+        const isNearCenterY = Math.abs(objectY - 50) < 2;
+
+        ctx.setLineDash([10, 10]);
+        ctx.lineWidth = 1;
+
+        // Vertical center line
+        if (isNearCenterX) {
+          ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+          ctx.beginPath();
+          ctx.moveTo(width / 2, 0);
+          ctx.lineTo(width / 2, height);
+          ctx.stroke();
+        }
+
+        // Horizontal center line
+        if (isNearCenterY) {
+          ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+          ctx.beginPath();
+          ctx.moveTo(0, height / 2);
+          ctx.lineTo(width, height / 2);
+          ctx.stroke();
+        }
+
+        // Always show faint grid
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        // Vertical center
+        ctx.beginPath();
+        ctx.moveTo(width / 2, 0);
+        ctx.lineTo(width / 2, height);
+        ctx.stroke();
+        // Horizontal center
+        ctx.beginPath();
+        ctx.moveTo(0, height / 2);
+        ctx.lineTo(width, height / 2);
+        ctx.stroke();
+        // Thirds
+        ctx.beginPath();
+        ctx.moveTo(width / 3, 0);
+        ctx.lineTo(width / 3, height);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(width * 2 / 3, 0);
+        ctx.lineTo(width * 2 / 3, height);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, height / 3);
+        ctx.lineTo(width, height / 3);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, height * 2 / 3);
+        ctx.lineTo(width, height * 2 / 3);
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+      }
+
+      // Subtle bottom gradient - not too heavy
+      const gradient = ctx.createLinearGradient(0, height * 0.4, 0, height);
+      gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0.75)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+
+      // Quote text - Small, elegant, refined like Neuronvisuals
+      const line1 = resultJSON.step4_best.line1;
+      const line2 = resultJSON.step4_best.line2;
+
+      // Scale font based on canvas size
+      const baseSize = Math.min(width, height);
+      const quoteFontSize = Math.round(baseSize * 0.032);
+      const lineHeight = quoteFontSize * 1.6;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Calculate text position based on slider (textPositionY is percentage)
+      const textY = height * (textPositionY / 100);
+
+      // Calculate total text height
+      const totalLines = line2 ? 2 : 1;
+      const totalHeight = totalLines * lineHeight;
+
+      let currentY = textY - totalHeight / 2;
+
+      // Draw quote lines
+      const fontWeight = selectedFont === 'Bebas Neue' ? '400' : '500';
+      ctx.font = `${fontWeight} ${quoteFontSize}px "${selectedFont}", sans-serif`;
+      ctx.fillText(line1, width / 2, currentY);
+      if (line2) {
+        currentY += lineHeight;
+        ctx.fillText(line2, width / 2, currentY);
+      }
+    };
+    img.src = uploadedImage;
+  }, [uploadedImage, resultJSON, selectedSize, objectScale, objectX, objectY, textPositionY, selectedFont, selectedBackground, bgColor, shapeColor, cleanThreshold, showGuides]);
+
+  // Re-render canvas when any setting changes
+  useEffect(() => {
+    if (uploadedImage && resultJSON) {
+      renderCanvas();
+    }
+  }, [uploadedImage, resultJSON, selectedSize, objectScale, objectX, objectY, textPositionY, selectedFont, selectedBackground, bgColor, shapeColor, cleanThreshold, showGuides, renderCanvas]);
+
+  
+  // Download canvas as PNG (without guides)
+  const handleDownload = useCallback(async () => {
+    // Temporarily hide guides for export
+    setShowGuides(false);
+
+    // Wait for re-render
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const link = document.createElement('a');
+    link.download = `metaphor-${Date.now()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+
+    // Restore guides
+    setShowGuides(true);
   }, []);
 
   return (
     <div className="app">
       <header className="header">
-        <h1>METAPHOR<span className="accent">ENGINE</span></h1>
-        <p className="subtitle">Ask Claude Code to generate a metaphor, paste the JSON here</p>
+        <div className="header-left">
+          <h1>METAPHOR<span className="accent">ENGINE</span></h1>
+          <p className="subtitle">Ask Claude Code to generate a metaphor, paste the JSON here</p>
+        </div>
+        <div className="header-right">
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className={`history-toggle ${showHistory ? 'active' : ''}`}
+          >
+            History ({history.length})
+          </button>
+        </div>
       </header>
 
       <main className="main">
@@ -146,39 +833,66 @@ function App() {
         <div className="panel left-panel">
           {!resultJSON && !rejection ? (
             <section className="section">
-              <div className="instruction-box">
-                <p><strong>In Claude Code, say:</strong></p>
-                <p className="example">"Generate a metaphor for: [your situation]"</p>
-                <p>Then paste the JSON response below.</p>
-              </div>
+              {!showManualInput ? (
+                <>
+                  <div className="instruction-box">
+                    <p><strong>In Claude Code, say:</strong></p>
+                    <p className="example">"Generate a metaphor for: [your situation]"</p>
+                    <p>Then click "Load from Claude" to fetch it.</p>
+                  </div>
 
-              <div className="input-group">
-                <label htmlFor="json-input">Paste JSON</label>
-                <textarea
-                  id="json-input"
-                  value={jsonInput}
-                  onChange={(e) => setJsonInput(e.target.value)}
-                  placeholder='{"step1": {...}, "step2_object": "...", ...}'
-                  className="input textarea mono"
-                  rows={12}
-                />
-              </div>
+                  {parseError && (
+                    <div className="error-box">
+                      {parseError}
+                    </div>
+                  )}
 
-              {parseError && (
-                <div className="error-box">
-                  {parseError}
-                </div>
+                  <div className="main-actions">
+                    <button onClick={loadFromClaude} className="button primary large">
+                      Load from Claude
+                    </button>
+                    <button onClick={() => setShowManualInput(true)} className="button secondary large">
+                      Add JSON Manually
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="input-group">
+                    <label htmlFor="json-input">Paste JSON</label>
+                    <textarea
+                      id="json-input"
+                      value={jsonInput}
+                      onChange={(e) => setJsonInput(e.target.value)}
+                      placeholder='{"step1": {...}, "step2_object": "...", ...}'
+                      className="input textarea mono"
+                      rows={12}
+                    />
+                  </div>
+
+                  {parseError && (
+                    <div className="error-box">
+                      {parseError}
+                    </div>
+                  )}
+
+                  <div className="button-row">
+                    <button
+                      onClick={handleParseJSON}
+                      disabled={!jsonInput.trim()}
+                      className="button primary"
+                    >
+                      View Metaphor
+                    </button>
+                    <button
+                      onClick={() => setShowManualInput(false)}
+                      className="button secondary"
+                    >
+                      Back
+                    </button>
+                  </div>
+                </>
               )}
-
-              <div className="button-row">
-                <button
-                  onClick={handleParseJSON}
-                  disabled={!jsonInput.trim()}
-                  className="button primary"
-                >
-                  View Metaphor
-                </button>
-              </div>
             </section>
           ) : rejection ? (
             <section className="section">
@@ -193,6 +907,13 @@ function App() {
             </section>
           ) : resultJSON && (
             <section className="section result-section">
+              {resultJSON.topic && (
+                <div className="result-block">
+                  <h3>Topic</h3>
+                  <p className="result-value topic-value">{resultJSON.topic}</p>
+                </div>
+              )}
+
               <div className="result-block">
                 <h3>Object</h3>
                 <p className="result-value object-value">{resultJSON.step2_object}</p>
@@ -229,7 +950,7 @@ function App() {
 
               <div className="button-row">
                 <button onClick={handleCopyDalle} className="button primary">
-                  {copied ? 'Copied!' : 'Generate Image'}
+                  {copied ? 'Copied!' : 'Copy Prompt'}
                 </button>
                 <button onClick={handleClear} className="button secondary">
                   New
@@ -239,69 +960,19 @@ function App() {
           )}
         </div>
 
-        {/* Right Panel - Generated Image */}
+        {/* Right Panel - Image Upload & Preview */}
         <div className="panel right-panel">
           <div className="preview-container">
-            {resultJSON ? (
-              <div className="poster-preview">
-                <div className="generated-poster">
-                  <svg viewBox="0 0 400 400" className="poster-svg">
-                    {/* Black background */}
-                    <rect width="400" height="400" fill="#000" />
+            {/* Hidden file input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept="image/*"
+              style={{ display: 'none' }}
+            />
 
-                    {/* Stairs */}
-                    <g stroke="#fff" strokeWidth="2" fill="none">
-                      {/* Stair steps */}
-                      <line x1="60" y1="280" x2="100" y2="280" />
-                      <line x1="100" y1="280" x2="100" y2="260" />
-                      <line x1="100" y1="260" x2="140" y2="260" />
-                      <line x1="140" y1="260" x2="140" y2="240" />
-                      <line x1="140" y1="240" x2="180" y2="240" />
-                      <line x1="180" y1="240" x2="180" y2="220" />
-                      <line x1="180" y1="220" x2="220" y2="220" />
-                      <line x1="220" y1="220" x2="220" y2="200" />
-                      {/* Railing */}
-                      <line x1="60" y1="250" x2="220" y2="170" />
-                      {/* Railing posts */}
-                      <line x1="80" y1="280" x2="80" y2="258" />
-                      <line x1="120" y1="260" x2="120" y2="238" />
-                      <line x1="160" y1="240" x2="160" y2="218" />
-                      <line x1="200" y1="220" x2="200" y2="198" />
-                    </g>
-
-                    {/* Elevator */}
-                    <g stroke="#fff" strokeWidth="2" fill="none">
-                      {/* Outer frame */}
-                      <rect x="250" y="120" width="100" height="160" />
-                      {/* Inner door frame */}
-                      <rect x="260" y="140" width="80" height="130" />
-                      {/* Door opening (white fill to show open) */}
-                      <rect x="265" y="145" width="70" height="120" fill="#111" />
-                      {/* Floor indicator */}
-                      <rect x="270" y="125" width="60" height="12" />
-                      <circle cx="285" cy="131" r="3" fill="#fff" />
-                      <circle cx="300" cy="131" r="3" fill="#fff" />
-                      <circle cx="315" cy="131" r="3" fill="#fff" />
-                      {/* Call button */}
-                      <rect x="355" y="180" width="15" height="40" />
-                      <circle cx="362" cy="192" r="4" />
-                      <circle cx="362" cy="208" r="4" />
-                    </g>
-
-                    {/* Text */}
-                    <text x="200" y="340" textAnchor="middle" fill="#fff" fontSize="14" fontFamily="Helvetica, Arial, sans-serif">
-                      What ignoring vibe coding feels like:
-                    </text>
-                    <text x="200" y="365" textAnchor="middle" fill="#fff" fontSize="13" fontFamily="Helvetica, Arial, sans-serif">
-                      Taking the stairs to the 50th floor
-                    </text>
-                    <text x="200" y="385" textAnchor="middle" fill="#fff" fontSize="13" fontFamily="Helvetica, Arial, sans-serif">
-                      when the elevator is right there.
-                    </text>
-                  </svg>
-                </div>
-              </div>
-            ) : (
+            {!resultJSON ? (
               <div className="image-placeholder">
                 <div className="placeholder-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -312,10 +983,325 @@ function App() {
                 </div>
                 <p>Paste JSON to see your metaphor</p>
               </div>
+            ) : !uploadedImage ? (
+              <div className="generate-zone">
+                {!openaiKey ? (
+                  <div className="api-key-setup">
+                    <div className="setup-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0110 0v4" />
+                      </svg>
+                    </div>
+                    <p className="setup-title">Add OpenAI API Key</p>
+                    <p className="setup-hint">~$0.04 per image with GPT Image</p>
+                    <input
+                      type="password"
+                      value={openaiKey}
+                      onChange={(e) => setOpenaiKey(e.target.value)}
+                      placeholder="sk-..."
+                      className="input api-key-input"
+                    />
+                    <a
+                      href="https://platform.openai.com/api-keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="api-link"
+                    >
+                      Get API key from OpenAI
+                    </a>
+                  </div>
+                ) : isGeneratingImage ? (
+                  <div className="generating-state">
+                    <div className="progress-container">
+                      <div className="progress-bar" style={{ width: `${generationProgress}%` }}></div>
+                    </div>
+                    <p className="progress-status">{generationStatus}</p>
+                    <p className="progress-percent">{Math.round(generationProgress)}%</p>
+                  </div>
+                ) : (
+                  <div className="ready-to-generate">
+                    <button onClick={generateImage} className="button primary generate-btn">
+                      Generate Image
+                    </button>
+                    {imageError && (
+                      <p className="image-error">{imageError}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="canvas-preview">
+                <img
+                  src={uploadedImage}
+                  alt="Preview"
+                  className="preview-image"
+                  style={{ display: 'none' }}
+                />
+                <canvas
+                  ref={canvasRef}
+                  className="preview-canvas"
+                  style={{ display: 'block' }}
+                />
+
+                {/* Edit Controls */}
+                <div className="edit-controls">
+                  {/* Object Section */}
+                  <div className="control-section">
+                    <h4>Object</h4>
+                    <div className="control-grid">
+                      <div className="control-group">
+                        <label>Scale <span className="value">{objectScale.toFixed(2)}</span></label>
+                        <input
+                          type="range"
+                          min="0.3"
+                          max="1.5"
+                          step="0.05"
+                          value={objectScale}
+                          onChange={(e) => setObjectScale(parseFloat(e.target.value))}
+                          className="slider"
+                        />
+                      </div>
+                      <div className="control-group half">
+                        <label>X <span className="value">{objectX}%</span></label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={objectX}
+                          onChange={(e) => setObjectX(parseInt(e.target.value))}
+                          className="slider"
+                        />
+                      </div>
+                      <div className="control-group half">
+                        <label>Y <span className="value">{objectY}%</span></label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={objectY}
+                          onChange={(e) => setObjectY(parseInt(e.target.value))}
+                          className="slider"
+                        />
+                      </div>
+                    </div>
+                    <div className="control-row">
+                      <button onClick={() => { setObjectX(50); setObjectY(50); }} className="tool-btn">Center</button>
+                      <button onClick={() => setObjectScale(1)} className="tool-btn">Reset</button>
+                      <button onClick={() => setShowGuides(!showGuides)} className={`tool-btn ${showGuides ? 'active' : ''}`}>
+                        Grid
+                      </button>
+                      <button
+                        onClick={() => {
+                          const settings = {
+                            scale: objectScale,
+                            x: objectX,
+                            y: objectY,
+                            text: textPositionY,
+                            font: selectedFont,
+                            bg: selectedBackground,
+                            bgColor: bgColor,
+                            shapeColor: shapeColor,
+                            clean: cleanThreshold
+                          };
+                          navigator.clipboard.writeText(JSON.stringify(settings));
+                        }}
+                        className="tool-btn"
+                        title="Copy settings to clipboard"
+                      >
+                        Copy
+                      </button>
+                      <button onClick={savePreset} className="tool-btn" title="Save as preset">
+                        Save
+                      </button>
+                    </div>
+                    {savedPresets.length > 0 && (
+                      <div className="presets-list">
+                        {savedPresets.map((preset, i) => (
+                          <div key={i} className="preset-item">
+                            <button onClick={() => applyPreset(preset.settings)} className="preset-btn">
+                              {preset.name}
+                            </button>
+                            <button onClick={() => deletePreset(i)} className="preset-delete">×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Text Section */}
+                  <div className="control-section">
+                    <h4>Text</h4>
+                    <div className="control-group">
+                      <label>Position <span className="value">{textPositionY}%</span></label>
+                      <input
+                        type="range"
+                        min="20"
+                        max="95"
+                        step="1"
+                        value={textPositionY}
+                        onChange={(e) => setTextPositionY(parseInt(e.target.value))}
+                        className="slider"
+                      />
+                    </div>
+                    <div className="font-selector">
+                      {fontOptions.map((font) => (
+                        <button
+                          key={font.name}
+                          onClick={() => setSelectedFont(font.name)}
+                          className={`font-btn ${selectedFont === font.name ? 'active' : ''}`}
+                          style={{ fontFamily: font.name }}
+                        >
+                          {font.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Background Section */}
+                  <div className="control-section">
+                    <h4>Background</h4>
+                    <div className="bg-selector">
+                      {backgroundOptions.map((bg) => (
+                        <button
+                          key={bg.id}
+                          onClick={() => setSelectedBackground(bg.id)}
+                          className={`bg-btn ${selectedBackground === bg.id ? 'active' : ''}`}
+                        >
+                          {bg.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {selectedBackground !== 'original' && (
+                      <>
+                        <div className="control-group" style={{ marginTop: '12px' }}>
+                          <label>Clean <span className="value">{cleanThreshold}</span></label>
+                          <input
+                            type="range"
+                            min="10"
+                            max="80"
+                            step="1"
+                            value={cleanThreshold}
+                            onChange={(e) => setCleanThreshold(parseInt(e.target.value))}
+                            className="slider"
+                          />
+                        </div>
+                        <div className="colors-row">
+                          <div className="color-input">
+                            <label>BG</label>
+                            <div className="color-picker">
+                              <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="color-swatch" />
+                              <input type="text" value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="input hex-input" />
+                            </div>
+                          </div>
+                          <div className="color-input">
+                            <label>Shape</label>
+                            <div className="color-picker">
+                              <input type="color" value={shapeColor} onChange={(e) => setShapeColor(e.target.value)} className="color-swatch" />
+                              <input type="text" value={shapeColor} onChange={(e) => setShapeColor(e.target.value)} className="input hex-input" />
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="size-selector">
+                  {(['1:1', '4:5', '9:16'] as const).map((size) => (
+                    <button
+                      key={size}
+                      onClick={() => setSelectedSize(size)}
+                      className={`size-btn ${selectedSize === size ? 'active' : ''}`}
+                    >
+                      <span className="size-ratio">{sizeConfigs[size].label}</span>
+                      <span className="size-desc">{sizeConfigs[size].desc}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="preview-actions">
+                  <button onClick={handleDownload} className="button primary">
+                    Download PNG
+                  </button>
+                  <button onClick={() => { setUploadedImage(null); generateImage(); }} className="button secondary">
+                    Regenerate
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
       </main>
+
+      {/* History Panel */}
+      {showHistory && (
+        <div className="history-overlay" onClick={() => setShowHistory(false)}>
+          <div className="history-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="history-header">
+              <h2>Saved Metaphors</h2>
+              <button onClick={() => setShowHistory(false)} className="close-btn">×</button>
+            </div>
+            <div className="history-list">
+              {history.length === 0 ? (
+                <p className="history-empty">No saved metaphors yet. Click "Save" to add one.</p>
+              ) : (
+                history.map((item) => (
+                  <div key={item.id} className={`history-item status-${item.status}`}>
+                    <div className="history-item-content" onClick={() => loadFromHistory(item)}>
+                      {item.generatedImage && (
+                        <img src={item.generatedImage} alt="" className="history-thumb" />
+                      )}
+                      <div className="history-text">
+                        <p className="history-quote">
+                          "{item.metaphor.step4_best.line1}
+                          {item.metaphor.step4_best.line2 && ` ${item.metaphor.step4_best.line2}`}"
+                        </p>
+                        <p className="history-object">{item.metaphor.step2_object}</p>
+                        <p className="history-date">
+                          {new Date(item.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="history-actions">
+                      <button
+                        onClick={() => updateHistoryStatus(item.id, 'done')}
+                        className={`status-btn done ${item.status === 'done' ? 'active' : ''}`}
+                        title="Done"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        onClick={() => updateHistoryStatus(item.id, 'future')}
+                        className={`status-btn future ${item.status === 'future' ? 'active' : ''}`}
+                        title="Save for later"
+                      >
+                        ★
+                      </button>
+                      <button
+                        onClick={() => updateHistoryStatus(item.id, 'declined')}
+                        className={`status-btn declined ${item.status === 'declined' ? 'active' : ''}`}
+                        title="Declined"
+                      >
+                        ✗
+                      </button>
+                      <button
+                        onClick={() => deleteFromHistory(item.id)}
+                        className="status-btn delete"
+                        title="Delete"
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
